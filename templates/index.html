@@ -1,0 +1,956 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>qa-tool · Q&A 管理</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                   "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background: #f5f6f8;
+      color: #1f2328;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ===== 顶部栏 ===== */
+    .topbar {
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+    .topbar h1 { font-size: 16px; font-weight: 600; }
+    .topbar .count {
+      color: #6b7280;
+      font-size: 13px;
+    }
+    .topbar .file-info {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #6b7280;
+    }
+    .topbar .file-info .path {
+      max-width: 320px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      background: #f3f4f6;
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+    .topbar button {
+      background: #fff;
+      border: 1px solid #d1d5db;
+      padding: 5px 12px;
+      border-radius: 5px;
+      font-size: 12px;
+      cursor: pointer;
+      color: #374151;
+    }
+    .topbar button:hover { background: #f9fafb; }
+
+    /* ===== 主体两栏 ===== */
+    .main {
+      flex: 1;
+      display: flex;
+      gap: 16px;
+      padding: 16px;
+      min-height: 0;
+    }
+    .pane {
+      background: #fff;
+      border-radius: 8px;
+      border: 1px solid #e5e7eb;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .pane-left { flex: 0 0 42%; min-width: 360px; }
+    .pane-right { flex: 1; }
+
+    .pane-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .pane-header h2 { font-size: 14px; font-weight: 600; }
+    .pane-header .search {
+      flex: 1;
+      padding: 6px 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 5px;
+      font-size: 13px;
+      outline: none;
+    }
+    .pane-header .search:focus { border-color: #3b82f6; }
+
+    .pane-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+    }
+
+    /* ===== 列表项 ===== */
+    .qa-item {
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 4px;
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    .qa-item:hover { background: #f9fafb; }
+    .qa-item.active { background: #eff6ff; border-color: #bfdbfe; }
+    .qa-item .head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .qa-item .seq {
+      background: #e5e7eb;
+      color: #374151;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+    .qa-item .q-text {
+      font-size: 13px;
+      font-weight: 500;
+      color: #111827;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .qa-item .a-preview {
+      font-size: 12px;
+      color: #6b7280;
+      padding-left: 4px;
+      border-left: 2px solid #e5e7eb;
+      margin-top: 4px;
+      padding: 4px 0 4px 8px;
+      max-height: 60px;
+      overflow: hidden;
+      position: relative;
+    }
+    .qa-item.just-added {
+      animation: highlight 2s ease-out;
+    }
+    @keyframes highlight {
+      0% { background: #fef3c7; }
+      100% { background: transparent; }
+    }
+    .empty {
+      text-align: center;
+      color: #9ca3af;
+      padding: 40px 20px;
+      font-size: 13px;
+    }
+
+    /* ===== 表单 ===== */
+    .form {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      flex: 1;
+      min-height: 0;
+    }
+    .form label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #374151;
+      display: block;
+      margin-bottom: 6px;
+    }
+    .form input[type="text"] {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 5px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+    }
+    .form input[type="text"]:focus { border-color: #3b82f6; }
+    .form textarea {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 5px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      resize: vertical;
+      min-height: 240px;
+      line-height: 1.5;
+    }
+    .form textarea:focus { border-color: #3b82f6; }
+    .form textarea.over-limit { border-color: #ef4444; background: #fef2f2; }
+    .char-counter {
+      font-size: 12px;
+      color: #6b7280;
+      text-align: right;
+      margin-top: 4px;
+      font-variant-numeric: tabular-nums;
+    }
+    .char-counter.over { color: #ef4444; font-weight: 600; }
+
+    .form .submit-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: auto;
+      padding-top: 12px;
+      border-top: 1px solid #e5e7eb;
+    }
+    .form .submit-row .hint {
+      font-size: 12px;
+      color: #6b7280;
+    }
+    .btn-primary {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      padding: 9px 20px;
+      border-radius: 5px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-primary:disabled {
+      background: #d1d5db;
+      cursor: not-allowed;
+    }
+
+    /* ===== 模态框 ===== */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.4);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+    .modal-backdrop.show { display: flex; }
+    .modal {
+      background: #fff;
+      border-radius: 8px;
+      padding: 20px;
+      width: 480px;
+      max-width: 90vw;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    }
+    .modal h3 { font-size: 15px; margin-bottom: 12px; }
+    .modal p { font-size: 13px; color: #4b5563; margin-bottom: 12px; line-height: 1.6; }
+    .modal input {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 5px;
+      font-size: 13px;
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      margin-bottom: 12px;
+    }
+    .modal .actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    .modal button {
+      padding: 7px 14px;
+      border-radius: 5px;
+      font-size: 13px;
+      cursor: pointer;
+      border: 1px solid #d1d5db;
+      background: #fff;
+      color: #374151;
+    }
+    .modal button.primary {
+      background: #2563eb;
+      color: #fff;
+      border-color: #2563eb;
+    }
+    .modal button.danger {
+      background: #ef4444;
+      color: #fff;
+      border-color: #ef4444;
+    }
+    .modal .err {
+      color: #ef4444;
+      font-size: 12px;
+      margin-top: -6px;
+      margin-bottom: 8px;
+      min-height: 16px;
+    }
+
+    /* ===== 文件选择行(input + 按钮) ===== */
+    .input-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .input-row input {
+      flex: 1;
+      margin-bottom: 0 !important;
+    }
+    .pick-btn {
+      background: #fff;
+      border: 1px solid #d1d5db;
+      padding: 7px 12px;
+      border-radius: 5px;
+      font-size: 13px;
+      cursor: pointer;
+      color: #374151;
+      white-space: nowrap;
+    }
+    .pick-btn:hover { background: #f3f4f6; }
+
+    /* ===== 合并预览 ===== */
+    .merge-preview {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+      font-size: 13px;
+    }
+    .merge-preview .preview-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 3px 0;
+    }
+    .merge-preview .preview-row span {
+      color: #6b7280;
+    }
+    .merge-preview .green { color: #059669; font-weight: 600; }
+    .merge-preview .orange { color: #d97706; font-weight: 600; }
+
+    /* ===== 详情预览模态框 ===== */
+    .detail-modal {
+      width: 720px;
+      max-width: 92vw;
+      max-height: 88vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .detail-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .detail-seq {
+      background: #2563eb;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+    .detail-header h3 {
+      font-size: 15px;
+      margin: 0;
+      color: #111827;
+      word-break: break-word;
+    }
+    .detail-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #6b7280;
+      margin-bottom: 10px;
+    }
+    .detail-meta .meta-len {
+      font-variant-numeric: tabular-nums;
+    }
+    .detail-meta .mini-btn {
+      background: #fff;
+      border: 1px solid #d1d5db;
+      padding: 3px 9px;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      color: #374151;
+      margin-left: auto;
+    }
+    .detail-meta .mini-btn:first-of-type {
+      margin-left: auto;
+    }
+    .detail-meta .mini-btn:hover { background: #f9fafb; }
+    .detail-body {
+      flex: 1;
+      overflow-y: auto;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      padding: 14px 16px;
+      font-size: 13px;
+      line-height: 1.7;
+      color: #1f2328;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: inherit;
+      margin-bottom: 12px;
+    }
+
+    /* ===== Toast ===== */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1f2328;
+      color: #fff;
+      padding: 10px 18px;
+      border-radius: 6px;
+      font-size: 13px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+      z-index: 200;
+      max-width: 80vw;
+    }
+    .toast.show { opacity: 1; }
+    .toast.error { background: #dc2626; }
+    .toast.success { background: #059669; }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>📋 Q&A 管理</h1>
+  <span class="count" id="count">共 0 条</span>
+  <div class="file-info">
+    <span>当前文件:</span>
+    <span class="path" id="current-path">未加载</span>
+    <button onclick="showSwitchFile()">切换文件</button>
+    <button onclick="showMerge()">合并文件</button>
+  </div>
+</div>
+
+<div class="main">
+  <!-- 左:列表 -->
+  <div class="pane pane-left">
+    <div class="pane-header">
+      <h2>📚 已有的 Q&A</h2>
+      <input type="text" class="search" id="search" placeholder="🔍 搜索问题或答案...">
+    </div>
+    <div class="pane-body" id="list">
+      <div class="empty">加载中...</div>
+    </div>
+  </div>
+
+  <!-- 右:表单 -->
+  <div class="pane pane-right">
+    <div class="pane-header">
+      <h2>➕ 添加新问题</h2>
+    </div>
+    <div class="form">
+      <div>
+        <label for="q-input">问题</label>
+        <input type="text" id="q-input" placeholder="输入问题(单行)">
+      </div>
+      <div>
+        <label for="a-input">答案</label>
+        <textarea id="a-input" placeholder="输入答案(支持多行,按 Ctrl+Enter 提交)"></textarea>
+        <div class="char-counter" id="char-counter">字符数: 0 / 2000</div>
+      </div>
+      <div class="submit-row">
+        <span class="hint" id="hint">提示: 按 Ctrl+Enter 快速提交</span>
+        <button class="btn-primary" id="submit-btn" onclick="submitQA()">添加</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 切换文件模态框 -->
+<div class="modal-backdrop" id="switch-modal">
+  <div class="modal">
+    <h3>切换 xlsx 文件</h3>
+    <p>输入新的 xlsx 文件绝对路径(支持 <code>~</code> 展开)</p>
+    <div class="input-row">
+      <input type="text" id="switch-path" placeholder="/Users/you/Downloads/问题.xlsx">
+      <button class="pick-btn" onclick="pickFileFor('switch-path')">📁 选择文件</button>
+    </div>
+    <div class="err" id="switch-err"></div>
+    <div class="actions">
+      <button onclick="closeSwitchFile()">取消</button>
+      <button class="primary" onclick="confirmSwitchFile()">确定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 合并文件模态框 -->
+<div class="modal-backdrop" id="merge-modal">
+  <div class="modal">
+    <h3>合并 xlsx 文件</h3>
+    <p>把另一个 xlsx 合并到 <b>当前文件</b>。合并后所有序号会自动重制为 1, 2, 3, ... N。<br>相同问题(按问题文字匹配)会自动跳过,合并前会自动备份。</p>
+    <div class="input-row">
+      <input type="text" id="merge-path" placeholder="源 xlsx 绝对路径,如 ~/Downloads/qa-other.xlsx">
+      <button class="pick-btn" onclick="pickFileFor('merge-path')">📁 选择文件</button>
+    </div>
+    <div class="err" id="merge-err"></div>
+    <div id="merge-preview" class="merge-preview" style="display:none">
+      <div class="preview-row"><span>源文件:</span><b id="mp-source">-</b></div>
+      <div class="preview-row"><span>当前文件:</span><b id="mp-target">-</b></div>
+      <div class="preview-row"><span>预计新增:</span><b id="mp-add" class="green">-</b></div>
+      <div class="preview-row"><span>预计跳过(重复):</span><b id="mp-skip" class="orange">-</b></div>
+      <div class="preview-row"><span>合并后总数:</span><b id="mp-total">-</b></div>
+    </div>
+    <div class="actions">
+      <button onclick="closeMerge()">取消</button>
+      <button onclick="previewMerge()">预览</button>
+      <button class="primary" id="merge-confirm-btn" onclick="confirmMerge()" disabled>确认合并</button>
+    </div>
+  </div>
+</div>
+
+<!-- 重复确认模态框 -->
+<div class="modal-backdrop" id="dup-modal">
+  <div class="modal">
+    <h3>⚠ 问题已存在</h3>
+    <p id="dup-info"></p>
+    <div class="actions">
+      <button onclick="dupAction('cancel')">取消</button>
+      <button onclick="dupAction('skip')">跳过</button>
+      <button class="danger" onclick="dupAction('overwrite')">覆盖原答案</button>
+    </div>
+  </div>
+</div>
+
+<!-- 详情预览模态框 -->
+<div class="modal-backdrop" id="detail-modal">
+  <div class="modal detail-modal">
+    <div class="detail-header">
+      <span class="detail-seq" id="detail-seq">#1</span>
+      <h3 id="detail-q">问题</h3>
+    </div>
+    <div class="detail-meta">
+      答案 <span id="detail-a-len" class="meta-len">0 字符</span>
+      <button class="mini-btn" onclick="copyField('question')">📋 复制问题</button>
+      <button class="mini-btn" onclick="copyField('answer')">📋 复制答案</button>
+    </div>
+    <div class="detail-body" id="detail-a">答案内容</div>
+    <div class="actions">
+      <button onclick="closeDetail()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const ANSWER_MAX = 2000;
+  let allItems = [];
+  let activeSeq = null;
+  let pendingSubmit = null;  // 重复问题待提交数据
+
+  // ===== 工具 =====
+  function countChars(s) {
+    // code point 计数: 1 汉字=1, 1 emoji=1, 1 空格=1
+    return [...s].length;
+  }
+
+  function showToast(msg, type = '') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show ' + type;
+    setTimeout(() => t.className = 'toast', 2500);
+  }
+
+  function escapeHtml(s) {
+    return String(s || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  // ===== 加载列表 =====
+  async function loadList() {
+    try {
+      const r = await fetch('/api/qa');
+      if (!r.ok) {
+        const err = await r.json();
+        document.getElementById('list').innerHTML =
+          `<div class="empty">${escapeHtml(err.error || '加载失败')}</div>`;
+        return;
+      }
+      const data = await r.json();
+      allItems = data.items;
+      document.getElementById('count').textContent = `共 ${data.total} 条`;
+      renderList();
+    } catch (e) {
+      showToast('加载失败: ' + e.message, 'error');
+    }
+  }
+
+  function renderList() {
+    const keyword = document.getElementById('search').value.trim();
+    const items = keyword
+      ? allItems.filter(q => q.question.includes(keyword) || q.answer.includes(keyword))
+      : allItems;
+    const list = document.getElementById('list');
+    if (items.length === 0) {
+      list.innerHTML = `<div class="empty">${keyword ? '没有匹配的 Q&A' : '还没有 Q&A,去右边加一个吧 👉'}</div>`;
+      return;
+    }
+    list.innerHTML = items.map(q => `
+      <div class="qa-item ${q.seq === activeSeq ? 'active' : ''}" data-seq="${q.seq}" onclick="showDetail(${q.seq})">
+        <div class="head">
+          <span class="seq">#${q.seq}</span>
+          <span class="q-text">${escapeHtml(q.question)}</span>
+        </div>
+        <div class="a-preview">${escapeHtml(q.answer.slice(0, 120))}${q.answer.length > 120 ? '...' : ''}</div>
+      </div>
+    `).join('');
+  }
+
+  function selectItem(seq) {
+    activeSeq = seq;
+    renderList();
+  }
+
+  // ===== 详情预览 =====
+  function showDetail(seq) {
+    const qa = allItems.find(q => q.seq === seq);
+    if (!qa) return;
+    activeSeq = seq;
+    renderList();
+    document.getElementById('detail-seq').textContent = `#${qa.seq}`;
+    document.getElementById('detail-q').textContent = qa.question;
+    document.getElementById('detail-a').textContent = qa.answer;
+    document.getElementById('detail-a-len').textContent = `${countChars(qa.answer)} 字符`;
+    document.getElementById('detail-modal').classList.add('show');
+  }
+
+  function closeDetail() {
+    document.getElementById('detail-modal').classList.remove('show');
+  }
+
+  function copyField(kind) {
+    const qa = allItems.find(q => q.seq === activeSeq);
+    if (!qa) return;
+    const text = kind === 'question' ? qa.question : qa.answer;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text)
+        .then(() => showToast(`已复制${kind === 'question' ? '问题' : '答案'} ✓`, 'success'))
+        .catch(() => fallbackCopy(text, kind));
+    } else {
+      fallbackCopy(text, kind);
+    }
+  }
+
+  function fallbackCopy(text, kind) {
+    // 兜底:用 textarea + execCommand
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand('copy');
+      showToast(`已复制${kind === 'question' ? '问题' : '答案'} ✓`, 'success');
+    } catch (e) {
+      showToast('复制失败,请手动选择', 'error');
+    }
+    document.body.removeChild(ta);
+  }
+
+  // ===== 字符计数 =====
+  function updateCharCount() {
+    const a = document.getElementById('a-input').value;
+    const len = countChars(a);
+    const counter = document.getElementById('char-counter');
+    const ta = document.getElementById('a-input');
+    const btn = document.getElementById('submit-btn');
+    counter.textContent = `字符数: ${len} / ${ANSWER_MAX}`;
+    if (len > ANSWER_MAX) {
+      counter.classList.add('over');
+      ta.classList.add('over-limit');
+      btn.disabled = true;
+    } else {
+      counter.classList.remove('over');
+      ta.classList.remove('over-limit');
+      btn.disabled = false;
+    }
+  }
+
+  // ===== 提交 =====
+  async function submitQA(forceOverwrite = false) {
+    const q = document.getElementById('q-input').value.trim();
+    const a = document.getElementById('a-input').value;
+
+    if (!q) { showToast('问题不能为空', 'error'); return; }
+    if (countChars(a) > ANSWER_MAX) { showToast(`答案超过 ${ANSWER_MAX} 字符`, 'error'); return; }
+
+    try {
+      const r = await fetch('/api/qa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: q, answer: a, force_overwrite: forceOverwrite }),
+      });
+      const data = await r.json();
+
+      if (r.status === 409 && data.duplicate) {
+        // 弹出重复确认
+        pendingSubmit = { question: q, answer: a };
+        document.getElementById('dup-info').innerHTML =
+          `已存在序号 <b>#${data.existing_seq}</b> 的同名问题:<br>` +
+          `<span style="color:#6b7280">${escapeHtml(data.existing_seq ? (allItems.find(x => x.seq === data.existing_seq)?.question || q) : q)}</span><br><br>请选择:`;
+        document.getElementById('dup-modal').classList.add('show');
+        return;
+      }
+
+      if (!r.ok) {
+        showToast(data.error || '提交失败', 'error');
+        return;
+      }
+
+      showToast(data.action === 'overwritten' ? '已覆盖原答案 ✓' : `已添加 ✓ 序号 #${data.seq}`, 'success');
+      activeSeq = data.seq;
+      // 清空表单
+      document.getElementById('q-input').value = '';
+      document.getElementById('a-input').value = '';
+      updateCharCount();
+      // 刷新列表
+      await loadList();
+      // 滚到新加的项
+      setTimeout(() => {
+        const el = document.querySelector(`.qa-item[data-seq="${data.seq}"]`);
+        if (el) {
+          el.classList.add('just-added');
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 50);
+    } catch (e) {
+      showToast('提交失败: ' + e.message, 'error');
+    }
+  }
+
+  function dupAction(action) {
+    document.getElementById('dup-modal').classList.remove('show');
+    if (action === 'cancel' || !pendingSubmit) return;
+    if (action === 'skip') {
+      showToast('已跳过', '');
+      pendingSubmit = null;
+      return;
+    }
+    if (action === 'overwrite') {
+      const { question, answer } = pendingSubmit;
+      pendingSubmit = null;
+      submitQA(true);
+    }
+  }
+
+  // ===== 切换文件 =====
+  function showSwitchFile() {
+    document.getElementById('switch-path').value = document.getElementById('current-path').textContent;
+    document.getElementById('switch-err').textContent = '';
+    document.getElementById('switch-modal').classList.add('show');
+  }
+
+  // 通用:弹原生文件选择框,把结果填到指定 input
+  async function pickFileFor(inputId) {
+    const errEl = (inputId === 'switch-path')
+      ? document.getElementById('switch-err')
+      : document.getElementById('merge-err');
+    errEl.textContent = '';
+    try {
+      const r = await fetch('/api/pick-file', { method: 'POST' });
+      const data = await r.json();
+      if (data.cancelled) return;  // 用户取消,不做任何事
+      if (!r.ok) { errEl.textContent = data.error || '选择失败'; return; }
+      if (data.path) {
+        document.getElementById(inputId).value = data.path;
+        // 如果是合并对话框,自动触发预览
+        if (inputId === 'merge-path') {
+          previewMerge();
+        }
+      }
+    } catch (e) {
+      errEl.textContent = '选择失败: ' + e.message;
+    }
+  }
+  function closeSwitchFile() {
+    document.getElementById('switch-modal').classList.remove('show');
+  }
+  async function confirmSwitchFile() {
+    const path = document.getElementById('switch-path').value.trim();
+    const errEl = document.getElementById('switch-err');
+    if (!path) { errEl.textContent = '路径不能为空'; return; }
+    try {
+      const r = await fetch('/api/xlsx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+      });
+      const data = await r.json();
+      if (!r.ok) { errEl.textContent = data.error || '切换失败'; return; }
+      closeSwitchFile();
+      showToast('已切换文件 ✓', 'success');
+      await refreshInfo();
+      await loadList();
+    } catch (e) {
+      errEl.textContent = '切换失败: ' + e.message;
+    }
+  }
+
+  async function refreshInfo() {
+    const r = await fetch('/api/info');
+    const data = await r.json();
+    document.getElementById('current-path').textContent = data.loaded ? data.path : '未加载';
+  }
+
+  // ===== 合并文件 =====
+  function showMerge() {
+    document.getElementById('merge-path').value = '';
+    document.getElementById('merge-err').textContent = '';
+    document.getElementById('merge-preview').style.display = 'none';
+    document.getElementById('merge-confirm-btn').disabled = true;
+    document.getElementById('merge-modal').classList.add('show');
+  }
+
+  function closeMerge() {
+    document.getElementById('merge-modal').classList.remove('show');
+  }
+
+  async function previewMerge() {
+    const path = document.getElementById('merge-path').value.trim();
+    const errEl = document.getElementById('merge-err');
+    if (!path) { errEl.textContent = '请输入源文件路径'; return; }
+    errEl.textContent = '';
+    try {
+      const r = await fetch('/api/preview-merge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source_path: path }),
+      });
+      const data = await r.json();
+      if (!r.ok) { errEl.textContent = data.error || '预览失败'; return; }
+      document.getElementById('mp-source').textContent = `${data.source_total} 条`;
+      document.getElementById('mp-target').textContent = `${data.target_total} 条`;
+      document.getElementById('mp-add').textContent = `+${data.will_add} 条`;
+      document.getElementById('mp-skip').textContent = `${data.will_skip} 条`;
+      document.getElementById('mp-total').textContent = `${data.merged_total} 条`;
+      document.getElementById('merge-preview').style.display = 'block';
+      document.getElementById('merge-confirm-btn').disabled = false;
+    } catch (e) {
+      errEl.textContent = '预览失败: ' + e.message;
+    }
+  }
+
+  async function confirmMerge() {
+    const path = document.getElementById('merge-path').value.trim();
+    const errEl = document.getElementById('merge-err');
+    if (!path) { errEl.textContent = '请输入源文件路径'; return; }
+    if (!confirm('确认合并?\n- 当前文件会自动备份\n- 合并后序号会自动重制为 1,2,3...\n- 重复问题会自动跳过')) return;
+    errEl.textContent = '';
+    const btn = document.getElementById('merge-confirm-btn');
+    btn.disabled = true;
+    btn.textContent = '合并中...';
+    try {
+      const r = await fetch('/api/merge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source_path: path }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        errEl.textContent = data.error || '合并失败';
+        btn.textContent = '确认合并';
+        btn.disabled = false;
+        return;
+      }
+      closeMerge();
+      showToast(
+        `合并完成 ✓ 新增 ${data.added} 条,跳过 ${data.skipped} 条重复,共 ${data.total_after} 条`,
+        'success'
+      );
+      await refreshInfo();
+      await loadList();
+    } catch (e) {
+      errEl.textContent = '合并失败: ' + e.message;
+      btn.textContent = '确认合并';
+      btn.disabled = false;
+    }
+  }
+
+  // ===== 事件 =====
+  document.getElementById('search').addEventListener('input', renderList);
+  document.getElementById('a-input').addEventListener('input', updateCharCount);
+  document.getElementById('a-input').addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      submitQA();
+    }
+  });
+  document.getElementById('q-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      document.getElementById('a-input').focus();
+    }
+  });
+
+  // ESC 关闭模态框
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      // 优先关重复确认(更"危险"的状态)
+      if (document.getElementById('dup-modal').classList.contains('show')) {
+        dupAction('cancel');
+      } else {
+        closeDetail();
+        closeSwitchFile();
+        closeMerge();
+      }
+    }
+  });
+
+  // 点背景关闭模态框(点 modal 内部不关)
+  document.querySelectorAll('.modal-backdrop').forEach(bd => {
+    bd.addEventListener('click', e => {
+      if (e.target !== bd) return;  // 只在点到背景本身时关
+      if (bd.id === 'dup-modal') {
+        dupAction('cancel');
+      } else if (bd.id === 'detail-modal') {
+        closeDetail();
+      } else if (bd.id === 'switch-modal') {
+        closeSwitchFile();
+      } else if (bd.id === 'merge-modal') {
+        closeMerge();
+      }
+    });
+  });
+
+  // 启动
+  refreshInfo();
+  loadList();
+</script>
+
+</body>
+</html>

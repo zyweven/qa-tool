@@ -449,6 +449,7 @@
     <span class="path" id="current-path">未加载</span>
     <button onclick="showSwitchFile()">切换文件</button>
     <button onclick="showMerge()">合并文件</button>
+    <button onclick="showCreate()">新建文件</button>
   </div>
 </div>
 
@@ -525,6 +526,23 @@
       <button onclick="closeMerge()">取消</button>
       <button onclick="previewMerge()">预览</button>
       <button class="primary" id="merge-confirm-btn" onclick="confirmMerge()" disabled>确认合并</button>
+    </div>
+  </div>
+</div>
+
+<!-- 新建文件模态框 -->
+<div class="modal-backdrop" id="create-modal">
+  <div class="modal">
+    <h3>新建 xlsx 文件</h3>
+    <p>创建一个空的 Q&A 文件(只含表头: 序号 / 问题 / 答案),并自动切换到新文件。</p>
+    <div class="input-row">
+      <input type="text" id="create-path" placeholder="新文件完整路径(点右侧按钮选位置)">
+      <button class="pick-btn" onclick="pickSavePath()">📁 选择位置</button>
+    </div>
+    <div class="err" id="create-err"></div>
+    <div class="actions">
+      <button onclick="closeCreate()">取消</button>
+      <button class="primary" id="create-confirm-btn" onclick="confirmCreate()" disabled>创建并打开</button>
     </div>
   </div>
 </div>
@@ -827,6 +845,71 @@
     document.getElementById('current-path').textContent = data.loaded ? data.path : '未加载';
   }
 
+  // ===== 新建文件 =====
+  function showCreate() {
+    document.getElementById('create-path').value = '';
+    document.getElementById('create-err').textContent = '';
+    document.getElementById('create-confirm-btn').disabled = true;
+    document.getElementById('create-modal').classList.add('show');
+  }
+
+  function closeCreate() {
+    document.getElementById('create-modal').classList.remove('show');
+  }
+
+  async function pickSavePath() {
+    const errEl = document.getElementById('create-err');
+    errEl.textContent = '';
+    try {
+      const r = await fetch('/api/pick-save-path', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ default_name: '问答.xlsx' }),
+      });
+      const data = await r.json();
+      if (data.cancelled) return;
+      if (!r.ok) { errEl.textContent = data.error || '选择失败'; return; }
+      if (data.path) {
+        document.getElementById('create-path').value = data.path;
+        document.getElementById('create-confirm-btn').disabled = false;
+      }
+    } catch (e) {
+      errEl.textContent = '选择失败: ' + e.message;
+    }
+  }
+
+  async function confirmCreate() {
+    const path = document.getElementById('create-path').value.trim();
+    const errEl = document.getElementById('create-err');
+    if (!path) { errEl.textContent = '请先选保存位置'; return; }
+    if (!confirm('确认创建?\n新文件会自动成为当前打开的文件。')) return;
+    const btn = document.getElementById('create-confirm-btn');
+    btn.disabled = true;
+    btn.textContent = '创建中...';
+    try {
+      const r = await fetch('/api/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        errEl.textContent = data.error || '创建失败';
+        btn.textContent = '创建并打开';
+        btn.disabled = false;
+        return;
+      }
+      closeCreate();
+      showToast(`已创建并打开新文件 ✓`, 'success');
+      await refreshInfo();
+      await loadList();
+    } catch (e) {
+      errEl.textContent = '创建失败: ' + e.message;
+      btn.textContent = '创建并打开';
+      btn.disabled = false;
+    }
+  }
+
   // ===== 合并文件 =====
   function showMerge() {
     document.getElementById('merge-path').value = '';
@@ -927,6 +1010,7 @@
         closeDetail();
         closeSwitchFile();
         closeMerge();
+        closeCreate();
       }
     }
   });
@@ -943,6 +1027,8 @@
         closeSwitchFile();
       } else if (bd.id === 'merge-modal') {
         closeMerge();
+      } else if (bd.id === 'create-modal') {
+        closeCreate();
       }
     });
   });

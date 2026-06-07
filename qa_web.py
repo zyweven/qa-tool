@@ -9,7 +9,7 @@ import subprocess
 from pathlib import Path
 
 from flask import Flask, request, jsonify, render_template
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 
 app = Flask(__name__)
 
@@ -37,6 +37,28 @@ def pick_file_macos() -> str | None:
     """
     script = '''
     set theFile to choose file with prompt "选择 Q&A xlsx 文件"
+    return POSIX path of theFile
+    '''
+    try:
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode == 0:
+            path = result.stdout.strip()
+            if path:
+                return path
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
+def pick_save_path_macos(default_name: str = "问答.xlsx") -> str | None:
+    """用 macOS 原生"保存"对话框,返回用户选中的完整路径"""
+    # 转义 AppleScript 字符串里的双引号
+    safe_name = default_name.replace('"', '\\"')
+    script = f'''
+    set theFile to choose file name with prompt "保存新 Q&A 文件" default name "{safe_name}"
     return POSIX path of theFile
     '''
     try:
@@ -312,6 +334,68 @@ def api_pick_file():
     if not path.lower().endswith(".xlsx"):
         return jsonify({"error": f"只支持 .xlsx 文件(你选的是: {os.path.basename(path)})"}), 400
     return jsonify({"ok": True, "path": path})
+
+
+@app.route("/api/pick-save-path", methods=["POST"])
+def api_pick_save_path():
+    """后端弹 macOS 原生"保存"对话框,返回选中的路径(.xlsx)"""
+    if sys.platform != "darwin":
+        return jsonify({"error": "此功能仅支持 macOS(其他平台请手动输入路径)"}), 400
+    data = request.get_json(silent=True) or {}
+    default_name = (data.get("default_name") or "问答.xlsx").strip()
+    if not default_name.lower().endswith(".xlsx"):
+        default_name += ".xlsx"
+    path = pick_save_path_macos(default_name)
+    if not path:
+        return jsonify({"cancelled": True, "path": None})
+    if not path.lower().endswith(".xlsx"):
+        path += ".xlsx"
+    return jsonify({"ok": True, "path": path})
+
+
+@app.route("/api/create", methods=["POST"])
+def api_create():
+    """创建新的 xlsx(只含表头),并切换到新文件"""
+    data = request.get_json(silent=True) or {}
+    path = (data.get("path") or "").strip()
+    if not path:
+        return jsonify({"error": "路径不能为空"}), 400
+    path = os.path.expanduser(path)
+    if not path.lower().endswith(".xlsx"):
+        path += ".xlsx"
+
+    # 目录不存在则创建
+    parent = os.path.dirname(path)
+    if parent and not os.path.exists(parent):
+        try:
+            os.makedirs(parent, exist_ok=True)
+        except Exception as e:
+            return jsonify({"error": f"无法创建目录 {parent}: {e}"}), 400
+
+    # 文件已存在 → 拒绝(避免误覆盖)
+    if os.path.exists(path):
+        return jsonify({"error": f"文件已存在,不会覆盖: {path}"}), 400
+
+    # 创建
+    try:
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Sheet1"
+        ws.append(["序号", "问题", "答案"])
+        # 设置表头样式(加粗)
+        from openpyxl.styles import Font
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+        # 列宽
+        ws.column_dimensions["A"].width = 8
+        ws.column_dimensions["B"].width = 40
+        ws.column_dimensions["C"].width = 80
+        wb.save(path)
+    except Exception as e:
+        return jsonify({"error": f"创建文件失败: {e}"}), 500
+
+    XLSX_PATH["path"] = os.path.abspath(path)
+    return jsonify({"ok": True, "path": XLSX_PATH["path"]})
 
 
 @app.route("/api/merge", methods=["POST"])

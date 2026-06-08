@@ -307,6 +307,56 @@ def api_add_qa():
     return jsonify({"ok": True, "action": "added", "seq": new_seq})
 
 
+@app.route("/api/qa/<int:seq>", methods=["PUT"])
+def api_update_qa(seq):
+    """编辑指定序号的问题/答案(序号不变)"""
+    if not XLSX_PATH["path"]:
+        return jsonify({"error": "xlsx 未加载"}), 400
+
+    data = request.get_json(silent=True) or {}
+    new_question = (data.get("question") or "").strip()
+    new_answer = data.get("answer") or ""
+
+    if not new_question:
+        return jsonify({"error": "问题不能为空"}), 400
+
+    answer_len = count_codepoints(new_answer)
+    if answer_len > ANSWER_MAX:
+        return jsonify({
+            "error": f"答案超过 {ANSWER_MAX} 字符限制(当前 {answer_len})",
+            "answer_length": answer_len,
+        }), 400
+
+    qas = list_all()
+    target = next((q for q in qas if q["seq"] == seq), None)
+    if not target:
+        return jsonify({"error": f"找不到序号 #{seq}"}), 404
+
+    # 重复检测(排除自己)
+    conflict = next((q for q in qas if q["seq"] != seq and q["question"] == new_question), None)
+    if conflict:
+        return jsonify({
+            "duplicate": True,
+            "conflict_seq": conflict["seq"],
+            "message": f"问题与已存在的 #{conflict['seq']} 冲突",
+        }), 409
+
+    # 写回
+    new_rows = []
+    for qa in qas:
+        if qa["seq"] == seq:
+            new_rows.append([seq, new_question, new_answer])
+        else:
+            new_rows.append([qa["seq"], qa["question"], qa["answer"]])
+
+    try:
+        write_xlsx(new_rows)
+    except Exception as e:
+        return jsonify({"error": f"写入失败: {e}"}), 500
+
+    return jsonify({"ok": True, "seq": seq})
+
+
 @app.route("/api/xlsx", methods=["POST"])
 def api_set_xlsx():
     data = request.get_json(silent=True) or {}

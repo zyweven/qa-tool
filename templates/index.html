@@ -417,6 +417,41 @@
       margin-bottom: 12px;
     }
 
+    /* ===== 详情模态框 - 编辑态 ===== */
+    .edit-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 4px;
+      margin-top: 6px;
+    }
+    .edit-q-input {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 5px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      margin-bottom: 8px;
+    }
+    .edit-q-input:focus { border-color: #3b82f6; }
+    .edit-a-input {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 5px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+      resize: vertical;
+      min-height: 240px;
+      line-height: 1.5;
+    }
+    .edit-a-input:focus { border-color: #3b82f6; }
+    .edit-a-input.over-limit { border-color: #ef4444; background: #fef2f2; }
+
     /* ===== Toast ===== */
     .toast {
       position: fixed;
@@ -567,14 +602,29 @@
       <span class="detail-seq" id="detail-seq">#1</span>
       <h3 id="detail-q">问题</h3>
     </div>
-    <div class="detail-meta">
+    <div class="detail-meta" id="detail-meta-view">
       答案 <span id="detail-a-len" class="meta-len">0 字符</span>
       <button class="mini-btn" onclick="copyField('question')">📋 复制问题</button>
       <button class="mini-btn" onclick="copyField('answer')">📋 复制答案</button>
+      <button class="mini-btn" id="detail-edit-btn" onclick="enterEditMode()">✏️ 编辑</button>
     </div>
     <div class="detail-body" id="detail-a">答案内容</div>
-    <div class="actions">
+
+    <!-- 编辑态(默认隐藏) -->
+    <div id="detail-edit-form" style="display:none">
+      <label class="edit-label">问题</label>
+      <input type="text" id="edit-q-input" class="edit-q-input">
+      <label class="edit-label">答案</label>
+      <textarea id="edit-a-input" class="edit-a-input"></textarea>
+      <div class="char-counter" id="edit-char-counter">字符数: 0 / 2000</div>
+    </div>
+
+    <div class="actions" id="detail-actions-view">
       <button onclick="closeDetail()">关闭</button>
+    </div>
+    <div class="actions" id="detail-actions-edit" style="display:none">
+      <button onclick="cancelEdit()">取消</button>
+      <button class="primary" id="edit-save-btn" onclick="saveEdit()">💾 保存</button>
     </div>
   </div>
 </div>
@@ -664,10 +714,102 @@
     document.getElementById('detail-a').textContent = qa.answer;
     document.getElementById('detail-a-len').textContent = `${countChars(qa.answer)} 字符`;
     document.getElementById('detail-modal').classList.add('show');
+    // 每次打开都重置为只读态
+    exitEditMode();
   }
 
   function closeDetail() {
     document.getElementById('detail-modal').classList.remove('show');
+    exitEditMode();
+  }
+
+  // ===== 编辑模式 =====
+  function enterEditMode() {
+    const qa = allItems.find(q => q.seq === activeSeq);
+    if (!qa) return;
+    document.getElementById('edit-q-input').value = qa.question;
+    document.getElementById('edit-a-input').value = qa.answer;
+    updateEditCharCount();
+    // 切换显示
+    document.getElementById('detail-meta-view').style.display = 'none';
+    document.getElementById('detail-a').style.display = 'none';
+    document.getElementById('detail-actions-view').style.display = 'none';
+    document.getElementById('detail-edit-form').style.display = 'block';
+    document.getElementById('detail-actions-edit').style.display = 'flex';
+    // 焦点到问题
+    setTimeout(() => document.getElementById('edit-q-input').focus(), 50);
+  }
+
+  function exitEditMode() {
+    document.getElementById('detail-meta-view').style.display = 'flex';
+    document.getElementById('detail-a').style.display = 'block';
+    document.getElementById('detail-actions-view').style.display = 'flex';
+    document.getElementById('detail-edit-form').style.display = 'none';
+    document.getElementById('detail-actions-edit').style.display = 'none';
+  }
+
+  function cancelEdit() {
+    exitEditMode();
+  }
+
+  function updateEditCharCount() {
+    const a = document.getElementById('edit-a-input').value;
+    const len = countChars(a);
+    const counter = document.getElementById('edit-char-counter');
+    const ta = document.getElementById('edit-a-input');
+    const btn = document.getElementById('edit-save-btn');
+    counter.textContent = `字符数: ${len} / ${ANSWER_MAX}`;
+    if (len > ANSWER_MAX) {
+      counter.classList.add('over');
+      ta.classList.add('over-limit');
+      btn.disabled = true;
+    } else {
+      counter.classList.remove('over');
+      ta.classList.remove('over-limit');
+      btn.disabled = false;
+    }
+  }
+
+  async function saveEdit() {
+    if (!activeSeq) return;
+    const question = document.getElementById('edit-q-input').value.trim();
+    const answer = document.getElementById('edit-a-input').value;
+    if (!question) { showToast('问题不能为空', 'error'); return; }
+    if (countChars(answer) > ANSWER_MAX) { showToast(`答案超过 ${ANSWER_MAX} 字符`, 'error'); return; }
+
+    const btn = document.getElementById('edit-save-btn');
+    btn.disabled = true;
+    btn.textContent = '保存中...';
+    try {
+      const r = await fetch(`/api/qa/${activeSeq}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question, answer }),
+      });
+      const data = await r.json();
+      if (r.status === 409 && data.duplicate) {
+        showToast(`问题与已存在的 #${data.conflict_seq} 冲突`, 'error');
+        btn.textContent = '💾 保存';
+        btn.disabled = false;
+        return;
+      }
+      if (!r.ok) {
+        showToast(data.error || '保存失败', 'error');
+        btn.textContent = '💾 保存';
+        btn.disabled = false;
+        return;
+      }
+      showToast('已保存 ✓', 'success');
+      await loadList();
+      // 重新打开详情(显示更新后的内容,只读态)
+      const seq = activeSeq;
+      closeDetail();
+      showDetail(seq);
+    } catch (e) {
+      showToast('保存失败: ' + e.message, 'error');
+      btn.textContent = '💾 保存';
+      btn.disabled = false;
+    }
   }
 
   function copyField(kind) {
@@ -997,6 +1139,15 @@
     if (e.key === 'Enter') {
       e.preventDefault();
       document.getElementById('a-input').focus();
+    }
+  });
+
+  // 编辑模式的字符计数 + Ctrl+Enter 保存
+  document.getElementById('edit-a-input').addEventListener('input', updateEditCharCount);
+  document.getElementById('edit-a-input').addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      saveEdit();
     }
   });
 
